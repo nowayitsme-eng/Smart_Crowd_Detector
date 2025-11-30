@@ -233,8 +233,10 @@ def get_config():
 
 
 if __name__ == '__main__':
+    import os
+    port = int(os.environ.get('PORT', 5000))
     logger.info("Starting Zaytrics Web Server")
-    logger.info(f"Access the dashboard at: http://localhost:5000")
+    logger.info(f"Access the dashboard at: http://localhost:{port}")
     logger.info(f"Static folder: {app.static_folder}")
     logger.info(f"Template folder: {app.template_folder}")
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
