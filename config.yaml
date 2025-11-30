@@ -1,0 +1,65 @@
+# Zaytrics Smart Crowd Monitoring System - Configuration File
+# Version 1.0
+
+# Model Configuration
+model:
+  name: "yolov8n.pt"  # Options: yolov8n.pt (nano), yolov8s.pt (small), yolov8m.pt (medium)
+  confidence_threshold: 0.35  # Minimum confidence for detection (lowered for better detection)
+  iou_threshold: 0.45  # Intersection over Union threshold for NMS
+  device: "cpu"  # Options: "cpu" or "cuda" (GPU)
+  class_filter: [0]  # Class IDs to detect (0 = person in COCO dataset)
+
+# Video Input Configuration
+video:
+  source: 0  # 0 for webcam, or path to video file e.g., "videos/crowd.mp4"
+  fps: 30  # Target frames per second
+  resolution:
+    width: 640  # Frame width
+    height: 480  # Frame height
+  skip_frames: 1  # Process all frames with optimized pipeline
+
+# Crowd Detection Settings
+crowd:
+  density_threshold: 20  # Alert threshold for crowd count
+  warning_threshold: 35  # Critical warning threshold
+  min_detection_size: 20  # Minimum bounding box size (pixels)
+  
+# Heatmap Configuration
+heatmap:
+  enabled: false  # Enable/disable heatmap generation (disabled for speed)
+  kernel_size: 50  # Gaussian kernel size for density map
+  alpha: 0.6  # Heatmap overlay transparency (0.0 - 1.0)
+  colormap: "jet"  # Options: jet, hot, viridis, plasma
+
+# Dashboard Settings
+dashboard:
+  title: "Zaytrics Smart Crowd Monitoring System"
+  theme: "dark"  # Options: dark, light
+  refresh_rate: 1  # Dashboard refresh rate in seconds
+  show_fps: true  # Display FPS counter
+  show_confidence: true  # Show detection confidence scores
+  alert_sound: false  # Enable audio alerts
+
+# Performance Settings
+performance:
+  max_processing_time: 1.0  # Maximum processing time per frame (seconds)
+  max_queue_size: 10  # Maximum frame queue size
+  enable_profiling: false  # Enable performance profiling
+
+# Logging Configuration
+logging:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  save_logs: true  # Save logs to file
+  log_file: "logs/system.log"
+
+# Data Storage
+storage:
+  save_detections: false  # Save detection results to CSV
+  save_frames: false  # Save processed frames
+  output_directory: "output"
+  
+# System Constraints (from SRS)
+constraints:
+  min_accuracy: 0.80  # 80% minimum detection accuracy requirement
+  max_frame_delay: 1.0  # ≤ 1s processing delay per frame (CPU)
+  max_heatmap_delay: 1.5  # ≤ 1.5s heatmap generation per frame
