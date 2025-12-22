@@ -202,7 +202,7 @@ class ZaytricsDashboard {
 // Global functions for button handlers
 let dashboard;
 
-function switchSource(source) {
+async function switchSource(source) {
     const uploadSection = document.getElementById('uploadSection');
     const liveCameraBtn = document.getElementById('liveCameraBtn');
     const uploadVideoBtn = document.getElementById('uploadVideoBtn');
@@ -215,11 +215,18 @@ function switchSource(source) {
         dashboard.currentSource = 'camera';
         
         // Switch backend to camera
-        fetch('/api/switch_source', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_type: 'camera' })
-        }).catch(err => console.error('Error switching source:', err));
+        console.log('Switching to camera source...');
+        try {
+            const response = await fetch('/api/switch_source', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_type: 'camera' })
+            });
+            const data = await response.json();
+            console.log('Switched to camera:', data);
+        } catch (err) {
+            console.error('Error switching source:', err);
+        }
     }
 }
 

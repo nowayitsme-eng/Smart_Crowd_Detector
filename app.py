@@ -169,6 +169,7 @@ def generate_frames():
         video_file = state['video_file']
     
     logger.info(f"Source type: {source_type}, Video file: {video_file}")
+    logger.info(f"Will use: {'VIDEO FILE' if (source_type == 'video' and video_file) else 'CAMERA'}")
     
     if source_type == 'video' and video_file:
         logger.info(f"Opening video file: {video_file}")
@@ -447,11 +448,14 @@ def switch_source():
     
     time.sleep(0.5)  # Allow current stream to stop
     
-    # Update source
+    # Update source - ENSURE camera mode clears video file
     with state_lock:
         state['source_type'] = source_type
         if source_type == 'camera':
             state['video_file'] = None
+            logger.info("Camera mode activated - cleared video file from state")
+        else:
+            logger.info(f"Video mode - current video: {state.get('video_file', 'None')}")
     
     logger.info(f"Switched to {source_type} source")
     
