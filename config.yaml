@@ -1,65 +1,142 @@
 # Zaytrics Smart Crowd Monitoring System - Configuration File
-# Version 1.0
+# Version 2.0 - Enhanced for Small Object Detection
 
-# Model Configuration
+# Model Configuration - OPTIMIZED FOR SPEED WITH ACCURACY
 model:
-  name: "yolov8n.pt"  # Options: yolov8n.pt (nano), yolov8s.pt (small), yolov8m.pt (medium)
-  confidence_threshold: 0.35  # Minimum confidence for detection (lowered for better detection)
-  iou_threshold: 0.45  # Intersection over Union threshold for NMS
-  device: "cpu"  # Options: "cpu" or "cuda" (GPU)
+  name: "yolov8m.pt"  # MEDIUM model - best accuracy
+  confidence_threshold: 0.20  # Lower for better small object detection (synced with app.py)
+  iou_threshold: 0.45  # Slightly lower for speed
+  device: "cuda"  # Using RTX 3050 GPU for acceleration (auto-detects cuda:0)
   class_filter: [0]  # Class IDs to detect (0 = person in COCO dataset)
+  
+  # AGGRESSIVE Small Object Detection Parameters
+  small_object_mode: true  # Enable specialized small object detection
+  min_confidence_small: 0.05  # Ultra-low confidence for second pass
+  multi_scale: false  # Disable for speed (second pass handles this)
+  small_object_threshold: 50  # Pixel size below which object is considered "small"
+  
+  # Performance Optimization
+  detection_interval: 4  # Run detection every 4th frame (synced with app.py)
+  resize_factor: 1.0  # ALWAYS full resolution
+  imgsz: 640  # Full YOLO input size for maximum accuracy
 
 # Video Input Configuration
 video:
   source: 0  # 0 for webcam, or path to video file e.g., "videos/crowd.mp4"
   fps: 30  # Target frames per second
   resolution:
-    width: 640  # Frame width
-    height: 480  # Frame height
-  skip_frames: 1  # Process all frames with optimized pipeline
+    width: 640  # Balanced resolution for YOLOv8s
+    height: 480  
+  buffer_size: 1  # Reduced buffer for lower latency
+  skip_frames: 1  # Process every frame by default
 
-# Crowd Detection Settings
+# Crowd Detection Settings - AGGRESSIVE
 crowd:
-  density_threshold: 20  # Alert threshold for crowd count
-  warning_threshold: 35  # Critical warning threshold
-  min_detection_size: 20  # Minimum bounding box size (pixels)
+  density_threshold: 15  # Alert threshold for crowd count
+  warning_threshold: 25  # Critical warning threshold
+  min_detection_size: 8  # VERY SMALL minimum (heads/partial bodies)
+  max_detection_size: 400  # Maximum bounding box size to filter outliers
   
+  # AGGRESSIVE Small Object Settings
+  enable_size_filtering: true
+  min_small_object_size: 5  # Absolute minimum size for any detection
+  small_object_boost: true  # Apply special processing for small objects
+
 # Heatmap Configuration
 heatmap:
-  enabled: false  # Enable/disable heatmap generation (disabled for speed)
-  kernel_size: 50  # Gaussian kernel size for density map
+  enabled: false  # Enable/disable heatmap generation
+  kernel_size: 30  # Base kernel size (used when adaptive is false)
   alpha: 0.6  # Heatmap overlay transparency (0.0 - 1.0)
   colormap: "jet"  # Options: jet, hot, viridis, plasma
+  
+  # Adaptive Heatmap Settings (better for mixed close/far videos)
+  adaptive: true  # Enable adaptive kernel sizing based on detection size
+  min_kernel_size: 30  # Minimum kernel size for far videos (small people)
+  max_kernel_size: 150  # Maximum kernel size for close videos (large people)
+  blur_strength: 0.6  # Gaussian sigma multiplier for smoother blending
+  intensity_boost: 1.2  # Boost intensity for small object visibility
+
+# Preprocessing Configuration
+preprocessing:
+  enable_enhancement: true  # Enable frame enhancement for small objects
+  clahe_clip_limit: 2.0  # Contrast enhancement strength
+  clahe_grid_size: [8, 8]  # CLAHE grid size
+  sharpening_strength: 1.2  # Sharpening filter strength
+  noise_reduction: true  # Enable noise reduction
+  
+  # Small Object Enhancement
+  small_object_enhancement: true
+  contrast_boost: 1.1
+  detail_enhancement: true
 
 # Dashboard Settings
 dashboard:
-  title: "Zaytrics Smart Crowd Monitoring System"
+  title: "Zaytrics Smart Crowd Monitoring System - Enhanced"
   theme: "dark"  # Options: dark, light
   refresh_rate: 1  # Dashboard refresh rate in seconds
   show_fps: true  # Display FPS counter
   show_confidence: true  # Show detection confidence scores
+  show_small_objects: true  # Highlight small object detections
   alert_sound: false  # Enable audio alerts
+  
+  # Visualization Enhancements
+  small_object_color: [255, 255, 0]  # Yellow for small objects
+  normal_object_color: [0, 255, 0]   # Green for normal objects
+  show_centers: true  # Show center points for small objects
 
 # Performance Settings
 performance:
-  max_processing_time: 1.0  # Maximum processing time per frame (seconds)
-  max_queue_size: 10  # Maximum frame queue size
+  max_processing_time: 0.5  # Reduced for real-time performance
+  max_queue_size: 5  # Smaller queue for lower latency
   enable_profiling: false  # Enable performance profiling
+  adaptive_processing: true  # Adjust processing based on FPS
+  
+  # Small Object Performance
+  small_object_interval: 3  # Run small object detection every Nth frame
+  cache_detections: true  # Cache detections between frames
+  max_cache_age: 0.3  # Maximum age for cached detections (seconds)
 
 # Logging Configuration
 logging:
   level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
   save_logs: true  # Save logs to file
   log_file: "logs/system.log"
+  log_detections: false  # Log individual detections (verbose)
 
 # Data Storage
 storage:
   save_detections: false  # Save detection results to CSV
   save_frames: false  # Save processed frames
   output_directory: "output"
+  save_small_object_stats: true  # Track small object detection statistics
   
 # System Constraints (from SRS)
 constraints:
-  min_accuracy: 0.80  # 80% minimum detection accuracy requirement
-  max_frame_delay: 1.0  # ≤ 1s processing delay per frame (CPU)
-  max_heatmap_delay: 1.5  # ≤ 1.5s heatmap generation per frame
+  min_accuracy: 0.75  # Slightly reduced for small object focus
+  max_frame_delay: 0.5  # Reduced delay requirement for real-time
+  max_heatmap_delay: 1.0  # Reduced heatmap delay
+  
+  # Small Object Specific Constraints
+  min_small_object_accuracy: 0.65  # Minimum accuracy for small objects
+  max_small_object_size: 50  # Maximum size considered "small"
+
+# Alert System
+alerts:
+  enable_crowd_alerts: true
+  enable_small_object_alerts: false  # Special alerts for small object detection
+  alert_cooldown: 5  # Seconds between repeated alerts
+  
+  # Small Object Alert Settings
+  small_object_threshold: 5  # Minimum small objects to trigger alert
+  small_object_density_alert: 10  # Alert if small object density is high
+
+# Advanced Settings
+advanced:
+  enable_debug_overlay: false  # Show debug information on video
+  save_detection_samples: false  # Save samples of detections for analysis
+  detection_sample_interval: 30  # Save sample every N seconds
+  
+  # Small Object Analysis
+  track_small_objects: true
+  small_object_analysis: false  # Advanced analysis of small object patterns
+  enable_iou_tracking: true  # Use IoU for tracking small objects between frames

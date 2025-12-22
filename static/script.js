@@ -1,18 +1,19 @@
-// Zaytrics - Lapz.io Style Implementation
+// Zaytrics - Crowd Monitoring Dashboard
 
 class ZaytricsDashboard {
     constructor() {
         this.isRunning = false;
-        this.currentView = 'live';
+        this.currentSource = 'camera';
         this.peopleCount = 0;
         this.fps = 0;
         this.init();
     }
 
     init() {
-        console.log('Zaytrics Dashboard Initialized - Lapz.io Style');
+        console.log('Zaytrics Dashboard Initialized');
         this.setupEventListeners();
-        this.startDemoData();
+        this.setupFileUpload();
+        this.startStatsPolling();
         this.animateStats();
     }
 
@@ -20,40 +21,126 @@ class ZaytricsDashboard {
         // Control button interactions
         document.querySelectorAll('.control-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.control-btn').forEach(b => b.classList.remove('active'));
-                e.currentTarget.classList.add('active');
-            });
-        });
-
-        // Primary action buttons - all "Start Monitoring" buttons
-        document.querySelectorAll('.btn-primary').forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.toggleMonitoring();
+                if (!e.currentTarget.id.includes('heatmap')) {
+                    document.querySelectorAll('.control-btn').forEach(b => {
+                        if (!b.id.includes('heatmap')) {
+                            b.classList.remove('active');
+                        }
+                    });
+                    e.currentTarget.classList.add('active');
+                }
             });
         });
     }
 
-    async toggleMonitoring() {
-        console.log('toggleMonitoring called, current state:', this.isRunning);
-        this.isRunning = !this.isRunning;
-        const btn = document.querySelector('.btn-primary');
-        
-        if (this.isRunning) {
-            btn.innerHTML = '<span class="btn-icon">⏸</span> Stop Monitoring';
-            await this.startRealUpdates();
-        } else {
-            btn.innerHTML = '<span class="btn-icon">▶</span> Start Monitoring';
-            await this.stopRealUpdates();
+    setupFileUpload() {
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadStatus = document.getElementById('uploadStatus');
+
+        // Click to upload
+        uploadZone.addEventListener('click', () => fileInput.click());
+
+        // File selection
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this.uploadVideo(file);
+            }
+        });
+
+        // Drag and drop
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.style.borderColor = 'var(--primary)';
+            uploadZone.style.backgroundColor = 'rgba(99, 102, 241, 0.1)';
+        });
+
+        uploadZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadZone.style.borderColor = '';
+            uploadZone.style.backgroundColor = '';
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.style.borderColor = '';
+            uploadZone.style.backgroundColor = '';
+            
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                this.uploadVideo(file);
+            }
+        });
+    }
+
+    async uploadVideo(file) {
+        const uploadStatus = document.getElementById('uploadStatus');
+        const loopVideo = document.getElementById('loopVideo').checked;
+
+        // Validate file type
+        const allowedTypes = ['video/mp4', 'video/avi', 'video/quicktime', 'video/x-matroska', 'video/webm'];
+        if (!allowedTypes.includes(file.type)) {
+            uploadStatus.innerHTML = '<div class="error">❌ Invalid file type. Please upload MP4, AVI, MOV, MKV, or WEBM.</div>';
+            return;
+        }
+
+        // Validate file size (100MB)
+        if (file.size > 100 * 1024 * 1024) {
+            uploadStatus.innerHTML = '<div class="error">❌ File too large. Maximum size is 100MB.</div>';
+            return;
+        }
+
+        uploadStatus.innerHTML = '<div class="info">⏳ Uploading video...</div>';
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('loop', loopVideo);
+
+        try {
+            const response = await fetch('/api/upload_video', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                uploadStatus.innerHTML = '<div class="success">✅ Video uploaded successfully!</div>';
+                this.currentSource = 'video';
+                
+                // Auto-switch to uploaded video
+                setTimeout(() => {
+                    uploadStatus.innerHTML = '';
+                }, 3000);
+            } else {
+                uploadStatus.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+            }
+        } catch (error) {
+            console.error('Upload error:', error);
+            uploadStatus.innerHTML = '<div class="error">❌ Upload failed. Please try again.</div>';
         }
     }
 
-    startDemoData() {
+    startStatsPolling() {
+        // Clear any existing interval
+        if (this.statsInterval) {
+            clearInterval(this.statsInterval);
+        }
+        
         // Poll stats from Flask API
         this.statsInterval = setInterval(async () => {
             if (this.isRunning) {
                 await this.updateStatsFromAPI();
             }
         }, 1000);
+    }
+    
+    stopStatsPolling() {
+        if (this.statsInterval) {
+            clearInterval(this.statsInterval);
+            this.statsInterval = null;
+        }
     }
 
     async updateStatsFromAPI() {
@@ -66,6 +153,20 @@ class ZaytricsDashboard {
             
             document.getElementById('peopleCount').textContent = this.peopleCount;
             document.getElementById('fpsCount').textContent = this.fps.toFixed(1);
+            
+            // Update status indicator based on alert level
+            const statusDot = document.querySelector('.status-dot');
+            if (statusDot) {
+                const alertLevel = data.alert_level || 'normal';
+                statusDot.className = 'status-dot';
+                if (alertLevel === 'warning') {
+                    statusDot.style.backgroundColor = '#f59e0b';
+                } else if (alertLevel === 'critical') {
+                    statusDot.style.backgroundColor = '#ef4444';
+                } else {
+                    statusDot.style.backgroundColor = '#10b981';
+                }
+            }
         } catch (error) {
             console.error('Error fetching stats:', error);
         }
@@ -76,11 +177,11 @@ class ZaytricsDashboard {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'characterData' || mutation.type === 'childList') {
-                    const element = mutation.target;
-                    if (element.parentElement.classList.contains('stat-value')) {
-                        element.parentElement.style.transform = 'scale(1.1)';
+                    const element = mutation.target.parentElement;
+                    if (element && element.classList.contains('stat-value')) {
+                        element.style.transform = 'scale(1.1)';
                         setTimeout(() => {
-                            element.parentElement.style.transform = 'scale(1)';
+                            element.style.transform = 'scale(1)';
                         }, 300);
                     }
                 }
@@ -96,97 +197,160 @@ class ZaytricsDashboard {
             });
         });
     }
+}
 
-    async startRealUpdates() {
-        console.log('startRealUpdates called');
-        try {
-            console.log('Fetching /api/start...');
-            const response = await fetch('/api/start', { method: 'POST' });
-            const data = await response.json();
-            console.log('API response:', data);
-            
-            if (data.status === 'started') {
-                // Show video feed
-                const placeholder = document.getElementById('videoPlaceholder');
-                const videoFeed = document.getElementById('videoFeed');
-                
-                console.log('Placeholder:', placeholder, 'VideoFeed:', videoFeed);
-                
-                if (placeholder) placeholder.style.display = 'none';
-                if (videoFeed) {
-                    videoFeed.style.display = 'block';
-                    videoFeed.src = '/video_feed';
-                    console.log('Video feed started');
-                }
-            }
-        } catch (error) {
-            console.error('Error starting monitoring:', error);
-        }
-    }
+// Global functions for button handlers
+let dashboard;
 
-    async stopRealUpdates() {
-        console.log('Stopping monitoring...');
-        try {
-            const response = await fetch('/api/stop', { method: 'POST' });
-            const data = await response.json();
-            
-            if (data.status === 'stopped') {
-                // Hide video feed
-                const placeholder = document.getElementById('videoPlaceholder');
-                const videoFeed = document.getElementById('videoFeed');
-                
-                if (videoFeed) {
-                    videoFeed.style.display = 'none';
-                    videoFeed.src = '';
-                }
-                if (placeholder) placeholder.style.display = 'flex';
-            }
-        } catch (error) {
-            console.error('Error stopping monitoring:', error);
-        }
+function switchSource(source) {
+    const uploadSection = document.getElementById('uploadSection');
+    const liveCameraBtn = document.getElementById('liveCameraBtn');
+    const uploadVideoBtn = document.getElementById('uploadVideoBtn');
+    
+    if (source === 'upload') {
+        uploadSection.style.display = 'block';
+        dashboard.currentSource = 'upload';
+    } else {
+        uploadSection.style.display = 'none';
+        dashboard.currentSource = 'camera';
+        
+        // Switch backend to camera
+        fetch('/api/switch_source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source_type: 'camera' })
+        }).catch(err => console.error('Error switching source:', err));
     }
 }
 
-// View management
-async function toggleView(view) {
-    const views = ['live', 'heatmap', 'analytics'];
-    views.forEach(v => {
-        document.getElementById(`${v}View`)?.classList.remove('active');
-    });
+async function startMonitoring() {
+    console.log('Starting monitoring...');
+    dashboard.isRunning = true;
     
-    document.getElementById(`${view}View`)?.classList.add('active');
-    
-    // Toggle heatmap via API
-    if (view === 'heatmap') {
-        try {
-            await fetch('/api/toggle_heatmap', { method: 'POST' });
-        } catch (error) {
-            console.error('Error toggling heatmap:', error);
-        }
+    // Restart stats polling
+    if (dashboard) {
+        dashboard.startStatsPolling();
     }
     
-    // Update video placeholder based on view
-    const videoOverlay = document.querySelector('.video-overlay');
-    const icons = {
-        live: '📹',
-        heatmap: '🗺️',
-        analytics: '📊'
-    };
-    const texts = {
-        live: 'Click Start Monitoring to begin',
-        heatmap: 'Heatmap View',
-        analytics: 'Analytics View'
-    };
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const placeholder = document.getElementById('videoPlaceholder');
+    const videoFeed = document.getElementById('videoFeed');
     
-    if (videoOverlay) {
-        videoOverlay.querySelector('.camera-icon').textContent = icons[view];
-        videoOverlay.querySelector('.video-text').textContent = texts[view];
+    startBtn.style.display = 'none';
+    stopBtn.style.display = 'block';
+    
+    try {
+        // First call the start API to set state
+        const response = await fetch('/api/start', { method: 'POST' });
+        const data = await response.json();
+        console.log('Start API response:', data);
+        
+        if (data.status === 'started') {
+            // Small delay to let backend initialize
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Now set video source and display
+            if (videoFeed) {
+                console.log('Setting video feed source...');
+                videoFeed.src = '/video_feed?t=' + new Date().getTime();
+                
+                // Add load event listener for debugging
+                videoFeed.onload = function() {
+                    console.log('Video feed loaded successfully');
+                };
+                
+                videoFeed.onerror = function(e) {
+                    console.error('Video feed error:', e);
+                    alert('Failed to load video stream. Check console for details.');
+                };
+                
+                videoFeed.style.display = 'block';
+                console.log('Video feed displayed');
+            }
+            
+            // Hide placeholder
+            if (placeholder) {
+                placeholder.style.display = 'none';
+                console.log('Placeholder hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Error starting monitoring:', error);
+        alert('Failed to start monitoring. Error: ' + error.message);
+        dashboard.isRunning = false;
+        startBtn.style.display = 'block';
+        stopBtn.style.display = 'none';
     }
 }
+
+async function stopMonitoring() {
+    console.log('Stopping monitoring...');
+    dashboard.isRunning = false;
+    
+    // Stop stats polling to prevent unnecessary API calls
+    if (dashboard) {
+        dashboard.stopStatsPolling();
+    }
+    
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    
+    startBtn.style.display = 'block';
+    stopBtn.style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/stop', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.status === 'stopped') {
+            // Hide video feed
+            const placeholder = document.getElementById('videoPlaceholder');
+            const videoFeed = document.getElementById('videoFeed');
+            
+            if (videoFeed) {
+                videoFeed.style.display = 'none';
+                videoFeed.removeAttribute('src');
+            }
+            if (placeholder) placeholder.style.display = 'flex';
+            
+            // Reset counts
+            document.getElementById('peopleCount').textContent = '0';
+            document.getElementById('fpsCount').textContent = '0';
+        }
+    } catch (error) {
+        console.error('Error stopping monitoring:', error);
+    }
+}
+
+async function toggleHeatmap() {
+    const heatmapBtn = document.getElementById('heatmapBtn');
+    
+    try {
+        const response = await fetch('/api/toggle_heatmap', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.heatmap_enabled) {
+            heatmapBtn.classList.add('active');
+        } else {
+            heatmapBtn.classList.remove('active');
+        }
+    } catch (error) {
+        console.error('Error toggling heatmap:', error);
+    }
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', async () => {
+    if (dashboard && dashboard.isRunning) {
+        // Stop monitoring before page closes
+        await fetch('/api/stop', { method: 'POST' });
+    }
+});
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new ZaytricsDashboard();
+    dashboard = new ZaytricsDashboard();
     
     // Add scroll animations
     const observerOptions = {
@@ -210,126 +374,4 @@ document.addEventListener('DOMContentLoaded', () => {
         el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
         observer.observe(el);
     });
-});
-
-// Smooth scrolling for navigation
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            target.scrollIntoView({
-                behavior: 'smooth',
-                block: 'start'
-            });
-        }
-    });
-});
-// F1-themed enhancements
-class F1ThemeEnhancements {
-    constructor() {
-        this.speedMetrics = {
-            peopleCount: 0,
-            processingSpeed: 0,
-            accuracy: 99.9
-        };
-        this.init();
-    }
-
-    init() {
-        this.addRacingSounds();
-        this.enhanceMetrics();
-        this.addSpeedEffect();
-    }
-
-    addSpeedEffect() {
-        // Add speed lines effect to video container on data update
-        const videoContainer = document.querySelector('.video-container');
-        
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.type === 'characterData' || mutation.target.classList.contains('stat-value')) {
-                    this.triggerSpeedEffect(videoContainer);
-                }
-            });
-        });
-
-        const statElements = document.querySelectorAll('.stat-value');
-        statElements.forEach(element => {
-            observer.observe(element, {
-                characterData: true,
-                childList: true,
-                subtree: true
-            });
-        });
-    }
-
-    triggerSpeedEffect(container) {
-        // Create temporary speed lines
-        for (let i = 0; i < 3; i++) {
-            const line = document.createElement('div');
-            line.style.cssText = `
-                position: absolute;
-                top: 0;
-                left: ${Math.random() * 100}%;
-                width: 2px;
-                height: 100%;
-                background: linear-gradient(to bottom, transparent, var(--primary), transparent);
-                animation: speedLine 0.5s ease-out forwards;
-                z-index: 10;
-            `;
-            
-            container.appendChild(line);
-            
-            setTimeout(() => {
-                line.remove();
-            }, 500);
-        }
-    }
-
-    enhanceMetrics() {
-        // Add F1-style metric displays
-        const metrics = document.querySelector('.hero-stats');
-        if (metrics) {
-            metrics.innerHTML += `
-                <div class="stat">
-                    <div class="stat-number">99.9%</div>
-                    <div class="stat-label">Accuracy</div>
-                </div>
-            `;
-        }
-    }
-
-    addRacingSounds() {
-        // Optional: Add subtle racing sounds on interactions
-        document.querySelector('.btn-primary').addEventListener('mouseenter', () => {
-            // Could add subtle engine rev sound here
-            console.log('Engine ready! 🏎️');
-        });
-    }
-}
-
-// Initialize F1 enhancements
-document.addEventListener('DOMContentLoaded', () => {
-    new ZaytricsDashboard();
-    new F1ThemeEnhancements();
-    
-    // Add speed line animation to CSS
-    const speedLineStyle = document.createElement('style');
-    speedLineStyle.textContent = `
-        @keyframes speedLine {
-            0% {
-                transform: translateY(-100%);
-                opacity: 0;
-            }
-            50% {
-                opacity: 0.8;
-            }
-            100% {
-                transform: translateY(100%);
-                opacity: 0;
-            }
-        }
-    `;
-    document.head.appendChild(speedLineStyle);
 });

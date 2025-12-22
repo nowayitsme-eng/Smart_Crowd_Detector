@@ -13,7 +13,6 @@
     <!-- Background Elements -->
     <div class="bg-grid"></div>
     <div class="bg-glow"></div>
-    
     <div class="container">
         <!-- Header -->
         <header class="header">
@@ -22,22 +21,13 @@
                     <div class="logo-icon">Z</div>
                     <span class="logo-text">Zaytrics</span>
                 </div>
-                <div class="nav-links">
-                    <a href="#" class="nav-link">Features</a>
-                    <a href="#" class="nav-link">Solutions</a>
-                    <a href="#" class="nav-link">Pricing</a>
-                    <a href="#" class="nav-link">Company</a>
-                </div>
-                <div class="nav-actions">
-                    <button class="btn btn-secondary">Sign In</button>
-                    <button class="btn btn-primary">Get Started</button>
-                </div>
             </nav>
         </header>
 
         <!-- Hero Section -->
         <section class="hero">
-            <div class="hero-content">
+            <!-- Introduction Section -->
+            <div class="hero-intro">
                 <div class="badge">
                     <span class="badge-text">AI-Powered Analytics</span>
                 </div>
@@ -50,26 +40,6 @@
                     Advanced computer vision and AI to monitor, analyze, and optimize crowd movement 
                     in real-time. Make data-driven decisions for safety and efficiency.
                 </p>
-                <div class="hero-actions">
-                    <button class="btn btn-primary btn-large">
-                        <span class="btn-icon">▶</span>
-                        Start Monitoring
-                    </button>
-                </div>
-                <div class="hero-stats">
-                    <div class="stat">
-                        <div class="stat-number">99.9%</div>
-                        <div class="stat-label">Accuracy</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">24/7</div>
-                        <div class="stat-label">Monitoring</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-number">&lt;100ms</div>
-                        <div class="stat-label">Latency</div>
-                    </div>
-                </div>
             </div>
             
             <!-- Main Dashboard Card -->
@@ -91,7 +61,7 @@
                             <div class="video-text">Click Start Monitoring to begin</div>
                         </div>
                     </div>
-                    <img id="videoFeed" src="" alt="Live feed" style="display:none; width:100%; height:100%;">
+                    <img id="videoFeed" src="" alt="Live feed" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; object-fit:contain;">
                     
                     <div class="video-stats">
                         <div class="video-stat">
@@ -112,13 +82,48 @@
                 </div>
                 
                 <div class="card-controls">
-                    <button class="control-btn active" onclick="toggleView('live')">
-                        <span class="control-icon">🔴</span>
-                        Live View
+                    <button class="control-btn active" id="liveCameraBtn" onclick="switchSource('camera')">
+                        <span class="control-icon">📹</span>
+                        Live Camera
                     </button>
-                    <button class="control-btn" onclick="toggleView('analytics')">
-                        <span class="control-icon">📊</span>
-                        Analytics
+                    <button class="control-btn" id="uploadVideoBtn" onclick="switchSource('upload')">
+                        <span class="control-icon">📁</span>
+                        Upload Video
+                    </button>
+                    <button class="control-btn" id="heatmapBtn" onclick="toggleHeatmap()">
+                        <span class="control-icon">🔥</span>
+                        Heatmap
+                    </button>
+                </div>
+
+                <!-- Upload Form (Hidden by default) -->
+                <div class="upload-section" id="uploadSection" style="display: none;">
+                    <div class="upload-zone" id="uploadZone">
+                        <input type="file" id="fileInput" accept=".mp4,.avi,.mov,.mkv,.webm" style="display: none;">
+                        <div class="upload-content">
+                            <div class="upload-icon">📎</div>
+                            <div class="upload-text">Drag & drop video file here or click to browse</div>
+                            <div class="upload-subtext">Supported formats: MP4, AVI, MOV, MKV, WEBM (Max 100MB)</div>
+                        </div>
+                    </div>
+                    <div class="upload-options">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="loopVideo" checked>
+                            <span>Loop video playback</span>
+                        </label>
+                    </div>
+                    <div class="upload-status" id="uploadStatus"></div>
+                </div>
+
+                <!-- Start/Stop Controls -->
+                <div class="monitoring-controls">
+                    <button class="btn btn-primary btn-large" id="startBtn" onclick="startMonitoring()">
+                        <span class="btn-icon">▶</span>
+                        Start Monitoring
+                    </button>
+                    <button class="btn btn-secondary btn-large" id="stopBtn" onclick="stopMonitoring()" style="display: none;">
+                        <span class="btn-icon">■</span>
+                        Stop Monitoring
                     </button>
                 </div>
             </div>
@@ -127,11 +132,7 @@
         <!-- Features Grid -->
         <section class="features">
             <div class="section-header">
-                <div class="section-badge">Features</div>
                 <h2 class="section-title">Advanced Crowd Intelligence</h2>
-                <p class="section-description">
-                    Powerful tools to understand and manage crowd behavior in real-time
-                </p>
             </div>
             
             <div class="features-grid">
@@ -144,38 +145,28 @@
                 </div>
                 
                 <div class="feature-card">
-                    <div class="feature-icon">📈</div>
-                    <h3 class="feature-title">Analytics Dashboard</h3>
+                    <div class="feature-icon">🔥</div>
+                    <h3 class="feature-title">Heatmap Visualization</h3>
                     <p class="feature-description">
-                        Comprehensive insights and trend analysis with customizable reports
+                        Visual density maps showing crowd concentration and movement patterns
                     </p>
                 </div>
                 
                 <div class="feature-card">
-                    <div class="feature-icon">🚨</div>
-                    <h3 class="feature-title">Smart Alerts</h3>
+                    <div class="feature-icon">📹</div>
+                    <h3 class="feature-title">Dual Source Support</h3>
                     <p class="feature-description">
-                        Automated notifications for crowd density thresholds and anomalies
+                        Monitor live camera feeds or analyze uploaded video files
                     </p>
                 </div>
                 
                 <div class="feature-card">
-                    <div class="feature-icon">🔄</div>
-                    <h3 class="feature-title">API Integration</h3>
+                    <div class="feature-icon">⚡</div>
+                    <h3 class="feature-title">Optimized Performance</h3>
                     <p class="feature-description">
-                        Seamless integration with your existing security and management systems
+                        Efficient processing for real-time analysis on standard hardware
                     </p>
                 </div>
-            </div>
-        </section>
-
-        <!-- Press Section -->
-        <section class="press">
-            <div class="press-logos">
-                <div class="press-logo">Forbes</div>
-                <div class="press-logo">TechCrunch</div>
-                <div class="press-logo">The Verge</div>
-                <div class="press-logo">Wired</div>
             </div>
         </section>
     </div>

@@ -34,6 +34,12 @@ class HeatmapGenerator:
         self.alpha = config['heatmap']['alpha']
         self.colormap_name = config['heatmap']['colormap']
         
+        # Adaptive heatmap settings
+        self.adaptive = config['heatmap'].get('adaptive', True)
+        self.min_kernel_size = config['heatmap'].get('min_kernel_size', 30)
+        self.max_kernel_size = config['heatmap'].get('max_kernel_size', 150)
+        self.blur_strength = config['heatmap'].get('blur_strength', 0.6)
+        
         # Map colormap name to OpenCV constant
         colormap_dict = {
             'jet': cv2.COLORMAP_JET,
@@ -51,14 +57,15 @@ class HeatmapGenerator:
         
         logger.info(f"Heatmap Generator initialized: Enabled={self.enabled}")
         logger.info(f"Kernel size: {self.kernel_size}, Alpha: {self.alpha}, Colormap: {self.colormap_name}")
+        logger.info(f"Adaptive mode: {self.adaptive}, Range: {self.min_kernel_size}-{self.max_kernel_size}")
     
     def generate_heatmap(self, frame: np.ndarray, detections: List[Dict]) -> Tuple[np.ndarray, float]:
         """
-        Generate crowd density heatmap
+        Generate crowd density heatmap with ADAPTIVE kernel sizing
         
         Args:
             frame: Input frame
-            detections: List of detections with center points
+            detections: List of detections with center points and bbox
         
         Returns:
             heatmap_overlay: Frame with heatmap overlay
@@ -67,40 +74,139 @@ class HeatmapGenerator:
         Implements:
             - REQ-4: Generate localized density zones
             - REQ-5: Apply color map for crowd concentration
+            - ADAPTIVE: Auto-adjusts kernel size based on detection box dimensions
         """
         start_time = time.time()
         
-        if not self.enabled or len(detections) == 0:
+        # Validate inputs
+        if frame is None or frame.size == 0:
+            logger.error("Invalid frame provided to heatmap generator")
+            return np.zeros((480, 640, 3), dtype=np.uint8), 0.0
+        
+        # Only check if there are detections
+        if not detections or len(detections) == 0:
             generation_time = time.time() - start_time
             return frame.copy(), generation_time
         
         try:
             h, w = frame.shape[:2]
             
+            # Validate frame dimensions
+            if h <= 0 or w <= 0:
+                logger.error(f"Invalid frame dimensions: {h}x{w}")
+                return frame.copy(), 0.0
+            
             # Create empty density map (REQ-4: localized density zones)
             density_map = np.zeros((h, w), dtype=np.float32)
             
-            # Add Gaussian blobs at each detection center
+            # Calculate adaptive kernel size with validation
+            if self.adaptive and len(detections) > 0:
+                total_size = 0
+                valid_detections = 0
+                
+                for det in detections:
+                    try:
+                        bbox = det.get('bbox', [])
+                        if len(bbox) != 4:
+                            continue
+                        
+                        x1, y1, x2, y2 = bbox
+                        box_width = max(0, x2 - x1)
+                        box_height = max(0, y2 - y1)
+                        
+                        if box_width > 0 and box_height > 0:
+                            total_size += (box_width + box_height) / 2
+                            valid_detections += 1
+                    except (KeyError, TypeError, ValueError) as e:
+                        logger.debug(f"Skipping invalid detection: {e}")
+                        continue
+                
+                if valid_detections > 0:
+                    avg_box_size = total_size / valid_detections
+                    
+                    # Scale kernel size based on average object size
+                    kernel_radius = int(np.clip(avg_box_size * 0.8, 
+                                               self.min_kernel_size, 
+                                               self.max_kernel_size))
+                    kernel_radius = max(15, kernel_radius)
+                    logger.debug(f"Adaptive kernel: avg={avg_box_size:.1f}, radius={kernel_radius}")
+                else:
+                    kernel_radius = self.kernel_size
+            else:
+                kernel_radius = self.kernel_size
+            
+            # Add Gaussian blobs at each detection center with validation
             for det in detections:
-                cx, cy = det['center']
-                
-                # Ensure center is within bounds
-                cx = max(0, min(w - 1, cx))
-                cy = max(0, min(h - 1, cy))
-                
-                # Create small Gaussian kernel around detection
-                y_min = max(0, cy - self.kernel_size)
-                y_max = min(h, cy + self.kernel_size)
-                x_min = max(0, cx - self.kernel_size)
-                x_max = min(w, cx + self.kernel_size)
-                
-                # Add Gaussian contribution
-                y_grid, x_grid = np.ogrid[y_min:y_max, x_min:x_max]
-                gaussian = np.exp(
-                    -(((x_grid - cx) ** 2 + (y_grid - cy) ** 2) / (2 * (self.kernel_size / 3) ** 2))
-                )
-                
-                density_map[y_min:y_max, x_min:x_max] += gaussian
+                try:
+                    center = det.get('center', [])
+                    bbox = det.get('bbox', [])
+                    
+                    if len(center) != 2 or len(bbox) != 4:
+                        continue
+                    
+                    cx, cy = center
+                    
+                    # Validate center coordinates
+                    if not (0 <= cx < w and 0 <= cy < h):
+                        logger.debug(f"Skipping out-of-bounds detection at ({cx}, {cy})")
+                        continue
+                    
+                    # Get detection-specific size for better adaptation
+                    if self.adaptive:
+                        x1, y1, x2, y2 = bbox
+                        det_width = max(0, x2 - x1)
+                        det_height = max(0, y2 - y1)
+                        det_size = (det_width + det_height) / 2
+                        
+                        if det_size <= 0:
+                            det_kernel = kernel_radius
+                        else:
+                            det_kernel = int(np.clip(det_size * 0.8, 
+                                                    self.min_kernel_size, 
+                                                    self.max_kernel_size))
+                            det_kernel = max(15, det_kernel)
+                    else:
+                        det_kernel = kernel_radius
+                    
+                    # Calculate ROI bounds with proper clamping
+                    y_min = max(0, cy - det_kernel)
+                    y_max = min(h, cy + det_kernel)
+                    x_min = max(0, cx - det_kernel)
+                    x_max = min(w, cx + det_kernel)
+                    
+                    # Validate ROI dimensions
+                    kernel_height = y_max - y_min
+                    kernel_width = x_max - x_min
+                    
+                    if kernel_height <= 0 or kernel_width <= 0:
+                        continue
+                    
+                    # Create 2D Gaussian with bounds checking
+                    y_range = np.arange(y_min, y_max) - cy
+                    x_range = np.arange(x_min, x_max) - cx
+                    
+                    if len(y_range) == 0 or len(x_range) == 0:
+                        continue
+                    
+                    x_grid, y_grid = np.meshgrid(x_range, y_range)
+                    
+                    # Gaussian formula with adaptive sigma
+                    det_sigma = det_kernel * self.blur_strength
+                    gaussian = np.exp(-(x_grid**2 + y_grid**2) / (2 * det_sigma**2))
+                    
+                    # Use confidence as intensity multiplier for better visualization
+                    intensity = det.get('confidence', 1.0)
+                    
+                    # Add to density map with bounds safety
+                    try:
+                        density_map[y_min:y_max, x_min:x_max] += gaussian.astype(np.float32) * intensity
+                    except (ValueError, IndexError) as e:
+                        logger.debug(f"Skipping gaussian placement: {e}")
+                        continue
+                    
+                except (KeyError, TypeError, ValueError, IndexError) as e:
+                    logger.debug(f"Error processing detection for heatmap: {e}")
+                    continue
             
             # Normalize density map to 0-255
             if density_map.max() > 0:
@@ -108,8 +214,11 @@ class HeatmapGenerator:
             else:
                 density_map = density_map.astype(np.uint8)
             
-            # Apply Gaussian blur for smoother appearance
-            density_map = cv2.GaussianBlur(density_map, (21, 21), 0)
+            # Apply single Gaussian blur for smooth appearance (removed double blur)
+            blur_size = max(11, min(21, kernel_radius // 4))  # Adaptive blur size
+            if blur_size % 2 == 0:
+                blur_size += 1  # Must be odd
+            density_map = cv2.GaussianBlur(density_map, (blur_size, blur_size), 0)
             
             # Apply colormap (REQ-5: color map representing concentration)
             heatmap_colored = cv2.applyColorMap(density_map, self.colormap)
@@ -137,6 +246,8 @@ class HeatmapGenerator:
             
         except Exception as e:
             logger.error(f"Heatmap generation error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return frame.copy(), time.time() - start_time
     
     def generate_density_grid(self, frame: np.ndarray, detections: List[Dict], 
