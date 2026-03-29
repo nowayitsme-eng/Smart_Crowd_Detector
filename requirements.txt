@@ -8,8 +8,8 @@ pillow==10.0.1
 
 # YOLOv8 and Detection
 ultralytics==8.0.196
-torch==2.1.0
-torchvision==0.16.0
+#torch==2.1.0
+#torchvision==0.16.0
 
 # Web Framework
 flask==3.0.0
