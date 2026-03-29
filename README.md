@@ -1,4 +1,14 @@
-﻿# Smart Crowd Detector
+﻿---
+title: Smart Crowd Detector
+emoji: 🏃
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
+# Smart Crowd Detector
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![CUDA](https://img.shields.io/badge/CUDA-12.0+-green.svg)
