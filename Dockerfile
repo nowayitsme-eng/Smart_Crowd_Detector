@@ -22,7 +22,7 @@ WORKDIR $HOME/app
 
 # Copy dependencies first (for Docker caching)
 COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application
 COPY --chown=user . $HOME/app
