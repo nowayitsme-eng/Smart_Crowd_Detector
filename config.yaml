@@ -6,7 +6,7 @@ model:
   name: "yolov8m.pt"  # MEDIUM model - best accuracy
   confidence_threshold: 0.35
   iou_threshold: 0.45
-  device: "cuda"  # Using RTX 3050 GPU for acceleration (auto-detects cuda:0)
+  device: "cpu"  # Using RTX 3050 GPU for acceleration (auto-detects cuda:0)
   class_filter: [0]  # Class IDs to detect (0 = person in COCO dataset)
   
   # Small Object Detection Parameters
