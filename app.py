@@ -21,6 +21,7 @@ else:
 
 print("[*] Loading Flask...")
 from flask import Flask, render_template, Response, jsonify, request, send_from_directory
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 print("[OK] Flask loaded")
 
@@ -54,6 +55,7 @@ print("[OK] All modules loaded")
 
 # Initialize Flask app
 app = Flask(__name__, static_folder='static', template_folder='templates')
+CORS(app)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for development
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 app.config['UPLOAD_FOLDER'] = 'videos'
