@@ -96,6 +96,19 @@
                     </button>
                 </div>
 
+                <!-- Detection Mode Toggle -->
+                <div class="card-controls mode-selector">
+                    <div class="mode-label">Detection Mode:</div>
+                    <button class="control-btn mode-btn active" id="normalModeBtn" onclick="switchMode('normal')">
+                        <span class="control-icon">👥</span>
+                        Normal
+                    </button>
+                    <button class="control-btn mode-btn" id="denseModeBtn" onclick="switchMode('dense')">
+                        <span class="control-icon">🏟️</span>
+                        Dense Crowd
+                    </button>
+                </div>
+
                 <!-- Upload Form (Hidden by default) -->
                 <div class="upload-section" id="uploadSection" style="display: none;">
                     <div class="upload-zone" id="uploadZone">

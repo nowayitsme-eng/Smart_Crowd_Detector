@@ -59,6 +59,23 @@ app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
 app.config['UPLOAD_FOLDER'] = 'videos'
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
 
+# Add CORS and security headers
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    # Allow same-origin requests only
+    if 'Origin' in request.headers:
+        origin = request.headers['Origin']
+        # Only allow localhost origins for security
+        if 'localhost' in origin or '127.0.0.1' in origin or origin.startswith('http://10.'):
+            response.headers['Access-Control-Allow-Origin'] = origin
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
+
 # Ensure upload directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -115,15 +132,49 @@ state = {
 
 print(f"Default source: {default_source}, Video file: {latest_video}")
 
-# Use deque for frame times to prevent memory leak
-frame_times = deque(maxlen=100)
+# Use deque for frame times
+frame_times = deque(maxlen=100)  # Keep last 100 frames
 
-# Enhanced optimization settings for GPU-accelerated crowd detection
-DETECTION_INTERVAL = 4  # Run detection every 4th frame (yolov8m needs more skip)
-MIN_CONFIDENCE = 0.20  # Higher for speed
-RESIZE_FACTOR = 1.0   # Full resolution always
-MIN_OBJECT_SIZE = 10   # Slightly larger for speed
-ENABLE_MULTI_SCALE = False  # Disabled for speed
+# Detection Mode System - Toggle between Normal and Dense Crowd modes
+DETECTION_MODES = {
+    'normal': {  # Current working baseline - DO NOT MODIFY
+        'interval': 3,
+        'confidence': 0.35,
+        'iou': 0.45,
+        'resize': 1.0,
+        'min_size': 20,
+        'multi_scale': False,
+        'max_det': 300,
+        'imgsz': 416,
+        'second_pass_conf': 0.05,
+        'duplicate_threshold': 30,
+        'min_box_size': 5
+    },
+    'dense': {  # Aggressive mode for dense crowds (stadiums, concerts)
+        'interval': 2,  # Process every 2nd frame (faster than normal)
+        'confidence': 0.25,  # Lower confidence to catch more people
+        'iou': 0.35,  # Lower IOU to allow more overlap
+        'resize': 1.0,  # Full resolution
+        'min_size': 15,  # Smaller minimum size
+        'multi_scale': False,  # Keep same as normal for compatibility
+        'max_det': 500,  # Allow more detections
+        'imgsz': 416,  # MUST match TensorRT engine size
+        'second_pass_conf': 0.02,  # Much lower for second pass
+        'duplicate_threshold': 25,  # Slightly tighter duplicate threshold
+        'min_box_size': 3  # Accept smaller boxes
+    }
+}
+
+# Start in normal mode (current working baseline)
+CURRENT_MODE = 'normal'
+active_mode = DETECTION_MODES[CURRENT_MODE]
+
+# Detection parameters from config
+DETECTION_INTERVAL = active_mode['interval']
+MIN_CONFIDENCE = active_mode['confidence']
+RESIZE_FACTOR = active_mode['resize']
+MIN_OBJECT_SIZE = active_mode['min_size']
+ENABLE_MULTI_SCALE = active_mode['multi_scale']
 
 # Alert thresholds from config
 WARNING_THRESHOLD = config.get('crowd', {}).get('density_threshold', 15)
@@ -190,9 +241,10 @@ def generate_frames():
         logger.info(f"Set video source to: {video_path}")
     else:
         logger.info("Opening camera source")
-        # Set camera source properly
-        video_handler.set_source(0, is_camera=True)
-        logger.info("Set camera source to: 0")
+        # Set camera source properly - read from config
+        camera_index = config.get('video', {}).get('source', 0)
+        video_handler.set_source(camera_index, is_camera=True)
+        logger.info(f"Set camera source to: {camera_index}")
     
     # Try to open video source with retry logic
     max_retries = 3
@@ -275,14 +327,14 @@ def generate_frames():
                 if state['heatmap_enabled']:
                     # Heatmap mode: Skip bounding boxes for cleaner visualization
                     frame_display, heatmap_time = heatmap_generator.generate_heatmap(
-                        frame, detections  # Removed unnecessary copy - generator copies internally
+                        frame, detections  # Generator copies internally
                     )
                 else:
-                    # Normal mode: Draw bounding boxes
-                    frame_display = detector.draw_detections(frame.copy(), detections)
+                    # Normal mode: Draw bounding boxes (copies frame internally)
+                    frame_display = detector.draw_detections(frame, detections)
                 
-                # Cache the annotated frame for reuse (OPTIMIZED)
-                last_annotated_frame = frame_display.copy()
+                # Cache the annotated frame for reuse (no copy needed, frame_display is already a copy)
+                last_annotated_frame = frame_display
             else:
                 # Reuse cached annotated frame instead of re-drawing (MAJOR OPTIMIZATION)
                 detections = last_detections
@@ -319,8 +371,8 @@ def generate_frames():
                 with state_lock:
                     state['fps'] = len(frame_times) / elapsed if elapsed > 0 else 0
             
-            # Encode frame to JPEG with good quality (70% - balance quality and bandwidth)
-            ret, buffer = cv2.imencode('.jpg', frame_display, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            # Encode frame to JPEG with good quality (80% - improved quality)
+            ret, buffer = cv2.imencode('.jpg', frame_display, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             
             if ret:
                 yield (b'--frame\r\n'
@@ -381,7 +433,7 @@ def stop_monitoring():
 
 @app.route('/api/upload_video', methods=['POST'])
 def upload_video():
-    """Upload a video file for processing"""
+    """Upload a video file for processing with enhanced validation"""
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file provided'}), 400
@@ -390,10 +442,22 @@ def upload_video():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
+        # Validate file extension
         if not allowed_file(file.filename):
             return jsonify({'error': 'Invalid file type. Allowed: mp4, avi, mov, mkv, webm'}), 400
         
-        # Save the file
+        # Additional security: Check file size before saving
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()
+        file.seek(0)  # Reset to beginning
+        
+        if file_size > app.config['MAX_CONTENT_LENGTH']:
+            return jsonify({'error': f'File too large. Maximum size is 100MB'}), 400
+        
+        if file_size == 0:
+            return jsonify({'error': 'File is empty'}), 400
+        
+        # Save the file with secure filename
         filename = secure_filename(file.filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"{timestamp}_{filename}"
@@ -401,7 +465,7 @@ def upload_video():
         
         file.save(filepath)
         
-        # Validate video file can be opened
+        # Validate video file can be opened and has valid frames
         test_cap = None
         try:
             test_cap = cv2.VideoCapture(filepath)
@@ -493,6 +557,47 @@ def toggle_heatmap():
     logger.info(f"Heatmap {'enabled' if state['heatmap_enabled'] else 'disabled'}")
     return jsonify({'heatmap_enabled': state['heatmap_enabled']})
 
+@app.route('/api/set_detection_mode', methods=['POST'])
+def set_detection_mode():
+    """Switch between normal and dense crowd detection modes"""
+    global CURRENT_MODE, DETECTION_INTERVAL, MIN_CONFIDENCE, RESIZE_FACTOR
+    global MIN_OBJECT_SIZE, ENABLE_MULTI_SCALE
+    
+    data = request.get_json()
+    mode = data.get('mode', 'normal')
+    
+    if mode not in DETECTION_MODES:
+        return jsonify({'error': f'Invalid mode. Choose: normal or dense'}), 400
+    
+    # Update mode
+    CURRENT_MODE = mode
+    active_mode = DETECTION_MODES[mode]
+    
+    # Update global parameters
+    DETECTION_INTERVAL = active_mode['interval']
+    MIN_CONFIDENCE = active_mode['confidence']
+    RESIZE_FACTOR = active_mode['resize']
+    MIN_OBJECT_SIZE = active_mode['min_size']
+    ENABLE_MULTI_SCALE = active_mode['multi_scale']
+    
+    # Update detector instance dynamically
+    detector.confidence_threshold = MIN_CONFIDENCE
+    detector.iou_threshold = active_mode['iou']
+    detector.min_size = MIN_OBJECT_SIZE
+    detector.imgsz = active_mode['imgsz']
+    detector.max_det = active_mode['max_det']
+    detector.second_pass_conf = active_mode['second_pass_conf']
+    detector.duplicate_threshold = active_mode['duplicate_threshold']
+    detector.min_box_size = active_mode['min_box_size']
+    
+    logger.info(f"Detection mode switched to: {mode}")
+    logger.info(f"Settings: interval={DETECTION_INTERVAL}, conf={MIN_CONFIDENCE}, iou={active_mode['iou']}, max_det={active_mode['max_det']}")
+    
+    return jsonify({
+        'status': 'success',
+        'mode': mode,
+        'settings': active_mode
+    })
 
 @app.route('/api/reset', methods=['POST'])
 def reset_statistics():

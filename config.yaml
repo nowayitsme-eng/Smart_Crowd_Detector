@@ -1,24 +1,23 @@
 # Zaytrics Smart Crowd Monitoring System - Configuration File
 # Version 2.0 - Enhanced for Small Object Detection
 
-# Model Configuration - OPTIMIZED FOR SPEED WITH ACCURACY
+# Model Configuration
 model:
   name: "yolov8m.pt"  # MEDIUM model - best accuracy
-  confidence_threshold: 0.20  # Lower for better small object detection (synced with app.py)
-  iou_threshold: 0.45  # Slightly lower for speed
+  confidence_threshold: 0.35
+  iou_threshold: 0.45
   device: "cuda"  # Using RTX 3050 GPU for acceleration (auto-detects cuda:0)
   class_filter: [0]  # Class IDs to detect (0 = person in COCO dataset)
   
-  # AGGRESSIVE Small Object Detection Parameters
+  # Small Object Detection Parameters
   small_object_mode: true  # Enable specialized small object detection
-  min_confidence_small: 0.05  # Ultra-low confidence for second pass
-  multi_scale: false  # Disable for speed (second pass handles this)
+  min_confidence_small: 0.05  # Low confidence for second pass
+  multi_scale: false
   small_object_threshold: 50  # Pixel size below which object is considered "small"
   
   # Performance Optimization
-  detection_interval: 4  # Run detection every 4th frame (synced with app.py)
-  resize_factor: 1.0  # ALWAYS full resolution
-  imgsz: 640  # Full YOLO input size for maximum accuracy
+  detection_interval: 3  # Run detection every 3rd frame for better performance
+  resize_factor: 1.0  # Full resolution for best accuracy
 
 # Video Input Configuration
 video:
@@ -30,16 +29,16 @@ video:
   buffer_size: 1  # Reduced buffer for lower latency
   skip_frames: 1  # Process every frame by default
 
-# Crowd Detection Settings - AGGRESSIVE
+# Crowd Detection Settings
 crowd:
   density_threshold: 15  # Alert threshold for crowd count
   warning_threshold: 25  # Critical warning threshold
-  min_detection_size: 8  # VERY SMALL minimum (heads/partial bodies)
+  min_detection_size: 20  # Minimum bounding box size in pixels
   max_detection_size: 400  # Maximum bounding box size to filter outliers
   
-  # AGGRESSIVE Small Object Settings
+  # Small Object Settings
   enable_size_filtering: true
-  min_small_object_size: 5  # Absolute minimum size for any detection
+  min_small_object_size: 10  # Absolute minimum size for valid detection
   small_object_boost: true  # Apply special processing for small objects
 
 # Heatmap Configuration

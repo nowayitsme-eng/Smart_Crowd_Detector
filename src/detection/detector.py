@@ -42,9 +42,15 @@ class CrowdDetector:
         self.small_object_mode = config['model'].get('small_object_mode', True)
         self.imgsz = 416  # Lower resolution for faster TensorRT inference
         
-        # Performance tracking with bounded memory (prevent memory leaks)
+        # Dynamic mode parameters (can be updated via API)
+        self.max_det = 300  # Default max detections
+        self.second_pass_conf = 0.05  # Default second pass confidence
+        self.duplicate_threshold = 30  # Default duplicate detection threshold
+        self.min_box_size = 5  # Default minimum box size
+        
+        # Performance tracking
         from collections import deque
-        self.frame_times = deque(maxlen=100)  # Keep last 100 frame times only
+        self.frame_times = deque(maxlen=30)  # Keep last 30 frame times
         self.detection_count = 0
         self.frame_count = 0  # Track frames for logging throttle
         
@@ -92,21 +98,19 @@ class CrowdDetector:
 
     def detect_additional_pass(self, frame: np.ndarray, existing_detections: List[Dict]) -> List[Dict]:
         """
-        Second detection pass with even lower confidence for missed people
+        Additional detection pass with very low confidence for missed small objects
         """
         try:
-            # Ultra-low confidence second pass with GPU
+            # Second pass with lower confidence threshold for small/distant objects
             results = self.model(
                 frame,
-                conf=0.05,  # Ultra low confidence
-                iou=0.3,  # Lower IOU for dense crowds
+                conf=self.second_pass_conf,  # Use dynamic second pass confidence
+                iou=self.iou_threshold,
                 classes=self.class_filter,
                 verbose=False,
                 imgsz=self.imgsz,
-                device=0,  # Force CUDA GPU
-                half=True,  # FP16 inference
-                max_det=500,  # Allow many detections
-                agnostic_nms=True
+                device=self.device,
+                half=True
             )
             
             additional_detections = []
@@ -125,15 +129,15 @@ class CrowdDetector:
                     center_x = int((x1 + x2) / 2)
                     center_y = int((y1 + y2) / 2)
                     
-                    # Skip if too small
-                    if width < self.min_size or height < self.min_size:
+                    # Filter out very small noise using dynamic min_box_size
+                    if width < self.min_box_size or height < self.min_box_size:
                         continue
                     
                     # Check if this is a duplicate (near existing detection)
                     is_duplicate = False
                     for ex, ey in existing_centers:
                         distance = ((center_x - ex)**2 + (center_y - ey)**2)**0.5
-                        if distance < 30:  # 30px threshold for duplicate
+                        if distance < self.duplicate_threshold:  # Use dynamic threshold
                             is_duplicate = True
                             break
                     
@@ -144,7 +148,7 @@ class CrowdDetector:
                             'class_id': class_id,
                             'class_name': 'person',
                             'center': [center_x, center_y],
-                            'size': 'small' if (width < 50 or height < 50) else 'normal'
+                            'size': 'tiny' if (width < 10 or height < 10) else ('small' if (width < 50 or height < 50) else 'normal')
                         }
                         additional_detections.append(detection)
             
@@ -184,10 +188,11 @@ class CrowdDetector:
                 classes=self.class_filter,
                 verbose=False,
                 imgsz=self.imgsz,
-                device=self.device,  # Use configured device instead of hardcoded 0
+                device=self.device,
                 half=True,  # FP16 inference for 2x speedup on RTX 3050
-                max_det=300,  # Reduced from 500 for faster post-processing
-                agnostic_nms=False  # Faster NMS
+                max_det=self.max_det,  # Use dynamic max detections
+                agnostic_nms=False,
+                retina_masks=False  # Disable for speed
             )
             
             # Extract primary detections
@@ -202,7 +207,7 @@ class CrowdDetector:
                     width = x2 - x1
                     height = y2 - y1
                     
-                    # Very permissive size filter - allow heads (small boxes)
+                    # Filter by minimum size to remove noise
                     if width >= self.min_size and height >= self.min_size:
                         detection = {
                             'bbox': [int(x1), int(y1), int(x2), int(y2)],
@@ -210,7 +215,7 @@ class CrowdDetector:
                             'class_id': class_id,
                             'class_name': 'person',
                             'center': [int((x1 + x2) / 2), int((y1 + y2) / 2)],
-                            'size': 'small' if (width < 50 or height < 50) else 'normal'
+                            'size': 'tiny' if (width < 10 or height < 10) else ('small' if (width < 50 or height < 50) else 'normal')
                         }
                         detections.append(detection)
             
@@ -357,6 +362,8 @@ class CrowdDetector:
     
     def reset_statistics(self):
         """Reset detection statistics"""
-        self.frame_times = []
+        from collections import deque
+        self.frame_times = deque(maxlen=30)
         self.detection_count = 0
+        self.frame_count = 0
         logger.info("Detection statistics reset")

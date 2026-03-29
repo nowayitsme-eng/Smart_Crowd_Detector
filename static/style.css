@@ -415,6 +415,29 @@ body {
     border-color: var(--primary);
 }
 
+/* Mode Selector Styles */
+.mode-selector {
+    border-top: 1px solid var(--border);
+    background: var(--bg-overlay);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mode-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-right: 8px;
+}
+
+.mode-btn {
+    flex: 1;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+
 /* Upload Section */
 .upload-section {
     padding: 20px;

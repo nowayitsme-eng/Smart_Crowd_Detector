@@ -347,6 +347,33 @@ async function toggleHeatmap() {
     }
 }
 
+async function switchMode(mode) {
+    try {
+        const response = await fetch('/api/set_detection_mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: mode })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log(`Switched to ${mode} mode:`, data.settings);
+            
+            // Update button states
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${mode}ModeBtn`).classList.add('active');
+            
+            // Show notification
+            console.log(`✓ ${mode === 'normal' ? 'Normal' : 'Dense Crowd'} mode activated`);
+        } else {
+            const error = await response.json();
+            console.error('Mode switch error:', error.error);
+        }
+    } catch (error) {
+        console.error('Error switching mode:', error);
+    }
+}
+
 // Cleanup on page unload
 window.addEventListener('beforeunload', async () => {
     if (dashboard && dashboard.isRunning) {
