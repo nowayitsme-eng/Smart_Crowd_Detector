@@ -82,7 +82,7 @@ class CrowdDetector:
             logger.info("Warming up GPU (this may take a few seconds)...")
             dummy_frame = np.zeros((416, 416, 3), dtype=np.uint8)
             for _ in range(5):  # Run 5 warmup passes for better optimization
-                self.model(dummy_frame, conf=0.5, verbose=False, device=0, half=True, imgsz=self.imgsz)
+                self.model(dummy_frame, conf=0.5, verbose=False, device=self.device, half=(self.device != "cpu"), imgsz=self.imgsz)
             logger.info("GPU warmup complete - ready for fast inference")
             
         except Exception as e:
@@ -110,7 +110,7 @@ class CrowdDetector:
                 verbose=False,
                 imgsz=self.imgsz,
                 device=self.device,
-                half=True
+                half=(self.device != "cpu")
             )
             
             additional_detections = []
@@ -189,7 +189,7 @@ class CrowdDetector:
                 verbose=False,
                 imgsz=self.imgsz,
                 device=self.device,
-                half=True,  # FP16 inference for 2x speedup on RTX 3050
+                half=(self.device != "cpu"),  # FP16 inference for 2x speedup on RTX 3050
                 max_det=self.max_det,  # Use dynamic max detections
                 agnostic_nms=False,
                 retina_masks=False  # Disable for speed
